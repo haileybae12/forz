@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZukaTech — LuaU Obfuscator</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0c0a;
+    --panel:     #0d110d;
+    --border:    #1a2e1a;
+    --border-hi: #2a5c2a;
+    --green:     #39ff14;
+    --green-dim: #1a7a08;
+    --green-mid: #22cc0a;
+    --amber:     #ffb800;
+    --red:       #ff3333;
+    --text:      #c8e6c8;
+    --text-dim:  #4a6b4a;
+    --scanline:  rgba(0,255,0,0.02);
+    --glow:      0 0 20px rgba(57,255,20,0.15);
+    --glow-hi:   0 0 40px rgba(57,255,20,0.35);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      var(--scanline) 2px,
+      var(--scanline) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(57,255,20,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(57,255,20,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 24px 60px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 220px;
+    height: 1px;
+    background: var(--green);
+    box-shadow: var(--glow);
+  }
+
+  .logo-block {}
+
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--green);
+    text-shadow: var(--glow-hi);
+    letter-spacing: 3px;
+    line-height: 1;
+  }
+
+  .logo span {
+    color: var(--text-dim);
+    font-weight: 400;
+    font-size: 14px;
+  }
+
+  .tagline {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 6px;
+  }
+
+  .header-meta {
+    text-align: right;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+
+  .header-meta .status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    margin-right: 6px;
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 16px;
+  }
+
+  /* ── PANELS ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+
+  .panel:hover {
+    border-color: var(--border-hi);
+  }
+
+  .panel.active {
+    border-color: var(--green-dim);
+    box-shadow: inset 0 0 30px rgba(57,255,20,0.03);
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+  }
+
+  .panel-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--green-mid);
+  }
+
+  .panel-badge {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  .panel-badge.ok { color: var(--green-dim); }
+  .panel-badge.err { color: var(--red); }
+
+  textarea {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    padding: 16px;
+    resize: none;
+    flex: 1;
+    min-height: 260px;
+    caret-color: var(--green);
+    width: 100%;
+  }
+
+  textarea::placeholder { color: var(--text-dim); }
+
+  textarea:focus { outline: none; }
+
+  #output {
+    color: #7ecf7e;
+  }
+
+  /* ── OUTPUT CORNER BRACKET ── */
+  .panel.output-panel::before,
+  .panel.output-panel::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: var(--green-dim);
+    border-style: solid;
+  }
+  .panel.output-panel::before {
+    top: -1px; right: -1px;
+    border-width: 2px 2px 0 0;
+  }
+  .panel.output-panel::after {
+    bottom: -1px; left: -1px;
+    border-width: 0 0 2px 2px;
+  }
+
+  /* ── CONTROLS ROW ── */
+  .controls {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+  }
+
+  .btn {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 10px 24px;
+    border: 1px solid;
+    border-radius: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .btn:hover::before { opacity: 0.08; }
+  .btn:active::before { opacity: 0.15; }
+
+  .btn-primary {
+    color: var(--green);
+    border-color: var(--green);
+    box-shadow: 0 0 12px rgba(57,255,20,0.1);
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 0 20px rgba(57,255,20,0.3);
+    text-shadow: 0 0 8px var(--green);
+  }
+
+  .btn-primary:disabled {
+    color: var(--text-dim);
+    border-color: var(--border);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary {
+    color: var(--text-dim);
+    border-color: var(--border);
+    font-size: 12px;
+    padding: 10px 18px;
+  }
+
+  .btn-secondary:hover {
+    color: var(--text);
+    border-color: var(--border-hi);
+  }
+
+  .btn-secondary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-danger {
+    color: var(--red);
+    border-color: #4a1a1a;
+    font-size: 12px;
+    padding: 10px 18px;
+  }
+
+  .btn-danger:hover {
+    border-color: var(--red);
+    box-shadow: 0 0 12px rgba(255,51,51,0.15);
+  }
+
+  .controls-spacer { flex: 1; }
+
+  /* ── STATUS BAR ── */
+  .statusbar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 20px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  .status-msg {
+    flex: 1;
+    transition: all 0.3s;
+  }
+
+  .status-msg.idle    { color: var(--text-dim); }
+  .status-msg.working { color: var(--amber); }
+  .status-msg.success { color: var(--green); text-shadow: 0 0 8px rgba(57,255,20,0.4); }
+  .status-msg.error   { color: var(--red); }
+
+  .status-stats {
+    display: flex;
+    gap: 20px;
+  }
+
+  .stat { display: flex; gap: 6px; }
+  .stat-label { color: var(--text-dim); }
+  .stat-val { color: var(--text); font-weight: bold; }
+
+  /* ── PROGRESS BAR ── */
+  .progress-wrap {
+    grid-column: 1 / -1;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    display: none;
+  }
+
+  .progress-wrap.visible { display: block; }
+
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    transition: width 0.1s linear;
+  }
+
+  .progress-bar.indeterminate {
+    width: 30%;
+    animation: slide 1.2s ease-in-out infinite;
+  }
+
+  @keyframes slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+
+  /* ── SETTINGS PANEL ── */
+  .settings-row {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+
+  .settings-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    cursor: pointer;
+    user-select: none;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    transition: color 0.2s;
+  }
+
+  .settings-toggle:hover { color: var(--text); }
+
+  .settings-toggle .arrow {
+    transition: transform 0.2s;
+    font-size: 8px;
+    color: var(--green-dim);
+  }
+
+  .settings-toggle.open .arrow { transform: rotate(90deg); }
+
+  .settings-body {
+    display: none;
+    padding: 16px 20px 20px;
+    border-top: 1px solid var(--border);
+    gap: 20px;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .settings-body.open {
+    display: grid;
+  }
+
+  .setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .setting-label {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  .setting-desc {
+    font-size: 10px;
+    color: #2a4a2a;
+    margin-bottom: 4px;
+  }
+
+  .setting-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 2px;
+    background: var(--border-hi);
+    border-radius: 1px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    cursor: pointer;
+  }
+
+  .range-val {
+    font-size: 11px;
+    color: var(--green-mid);
+    min-width: 24px;
+    text-align: right;
+  }
+
+  .toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 2px;
+  }
+
+  .toggle {
+    position: relative;
+    width: 32px;
+    height: 16px;
+    cursor: pointer;
+  }
+
+  .toggle input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: var(--border);
+    border: 1px solid var(--border-hi);
+    border-radius: 8px;
+    transition: background 0.2s;
+  }
+
+  .toggle input:checked ~ .toggle-track {
+    background: var(--green-dim);
+    border-color: var(--green);
+    box-shadow: 0 0 6px rgba(57,255,20,0.3);
+  }
+
+  .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+
+  .toggle input:checked ~ .toggle-thumb {
+    left: 18px;
+    background: var(--green);
+    box-shadow: 0 0 4px var(--green);
+  }
+
+  .toggle-label {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* ── CHAR COUNTER ── */
+  .char-counter {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 6px 16px;
+    border-top: 1px solid var(--border);
+    text-align: right;
+  }
+
+  /* ── COPY FLASH ── */
+  @keyframes flashGreen {
+    0%, 100% { background: transparent; }
+    50% { background: rgba(57,255,20,0.05); }
+  }
+
+  .flash { animation: flashGreen 0.4s ease; }
+
+  /* ── SCROLLBAR ── */
+  textarea::-webkit-scrollbar { width: 4px; }
+  textarea::-webkit-scrollbar-track { background: transparent; }
+  textarea::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+  textarea::-webkit-scrollbar-thumb:hover { background: var(--green-dim); }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 700px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .settings-body { grid-template-columns: 1fr 1fr; }
+    .logo { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="logo-block">
+      <div class="logo">ZUKATECH <span>// OBFUSCATOR</span></div>
+      <div class="tagline">Built to protect Roblox LuaU scripts</div>
+    </div>
+    <div class="header-meta">
+      <div><span class="status-dot"></span>SYSTEM ONLINE</div>
+      <div>PRESET // LURAPH</div>
+      <div id="time">--:--:--</div>
+    </div>
+  </header>
+
+  <div class="main-grid">
+
+    <!-- Input -->
+    <div class="panel" id="inputPanel">
+      <div class="panel-header">
+        <span class="panel-title">// INPUT</span>
+        <span class="panel-badge" id="inputBadge">EMPTY</span>
+      </div>
+      <textarea id="input" placeholder="-- paste your Lua script here" spellcheck="false"></textarea>
+      <div class="char-counter" id="inputCounter">0 chars · 0 lines</div>
+    </div>
+
+    <!-- Output -->
+    <div class="panel output-panel" id="outputPanel">
+      <div class="panel-header">
+        <span class="panel-title">// OUTPUT</span>
+        <span class="panel-badge" id="outputBadge">AWAITING</span>
+      </div>
+      <textarea id="output" placeholder="-- obfuscated output will appear here" spellcheck="false" readonly></textarea>
+      <div class="char-counter" id="outputCounter">0 chars · 0 lines</div>
+    </div>
+
+    <!-- Settings -->
+    <div class="settings-row">
+      <button class="settings-toggle" id="settingsToggle">
+        <span class="arrow">▶</span>
+        PIPELINE SETTINGS
+        <span style="margin-left:auto;font-size:10px;color:#2a4a2a">LURAPH PRESET — CLICK TO CONFIGURE</span>
+      </button>
+      <div class="settings-body" id="settingsBody">
+        <div class="setting-group">
+          <div class="setting-label">Opaque Predicates</div>
+          <div class="setting-desc">Injection probability</div>
+          <div class="setting-control">
+            <input type="range" id="opThresh" min="0" max="100" value="85">
+            <span class="range-val" id="opThreshVal">85%</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Dead Code Inject</div>
+          <div class="setting-desc">Injections per block</div>
+          <div class="setting-control">
+            <input type="range" id="dcInject" min="1" max="5" value="3">
+            <span class="range-val" id="dcInjectVal">3</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Dynamic Jumps</div>
+          <div class="setting-desc">Opcode pool size</div>
+          <div class="setting-control">
+            <input type="range" id="djPool" min="64" max="256" step="64" value="256">
+            <span class="range-val" id="djPoolVal">256</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Anti-Dump</div>
+          <div class="setting-desc">GC interval (ms)</div>
+          <div class="setting-control">
+            <input type="range" id="adInterval" min="10" max="100" value="50">
+            <span class="range-val" id="adIntervalVal">50</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">String Encryption</div>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="strEncrypt" checked>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <span class="toggle-label">ENABLED</span>
+          </div>
+        </div>
+        <div class="setting-group">
+          <div class="setting-label">Virtual Globals</div>
+          <div class="toggle-wrap">
+            <label class="toggle">
+              <input type="checkbox" id="virtGlobals" checked>
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+            <span class="toggle-label">ENABLED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar indeterminate" id="progressBar"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="btn btn-primary" id="btnObfuscate">▶ OBFUSCATE</button>
+      <button class="btn btn-secondary" id="btnCopy" disabled>⬡ COPY</button>
+      <button class="btn btn-secondary" id="btnDownload" disabled>↓ DOWNLOAD</button>
+      <div class="controls-spacer"></div>
+      <button class="btn btn-danger" id="btnClear">✕ CLEAR</button>
+    </div>
+
+    <!-- Status bar -->
+    <div class="statusbar">
+      <div class="status-msg idle" id="statusMsg">READY — PASTE INPUT AND PRESS OBFUSCATE</div>
+      <div class="status-stats">
+        <div class="stat"><span class="stat-label">IN</span><span class="stat-val" id="statIn">0B</span></div>
+        <div class="stat"><span class="stat-label">OUT</span><span class="stat-val" id="statOut">0B</span></div>
+        <div class="stat"><span class="stat-label">RATIO</span><span class="stat-val" id="statRatio">—</span></div>
+        <div class="stat"><span class="stat-label">TIME</span><span class="stat-val" id="statTime">—</span></div>
+      </div>
+    </div>
+
+  </div><!-- /main-grid -->
+</div><!-- /wrapper -->
+
+<script>
+// ── Clock ──
+function tick() {
+  const d = new Date();
+  document.getElementById('time').textContent =
+    [d.getHours(), d.getMinutes(), d.getSeconds()]
+      .map(n => String(n).padStart(2,'0')).join(':');
+}
+tick();
+setInterval(tick, 1000);
+
+// ── Settings toggle ──
+const settingsToggle = document.getElementById('settingsToggle');
+const settingsBody   = document.getElementById('settingsBody');
+settingsToggle.addEventListener('click', () => {
+  settingsToggle.classList.toggle('open');
+  settingsBody.classList.toggle('open');
+});
+
+// ── Range inputs ──
+function bindRange(id, valId, suffix='') {
+  const el = document.getElementById(id);
+  const vl = document.getElementById(valId);
+  el.addEventListener('input', () => { vl.textContent = el.value + suffix; });
+}
+bindRange('opThresh',   'opThreshVal',   '%');
+bindRange('dcInject',   'dcInjectVal',   '');
+bindRange('djPool',     'djPoolVal',     '');
+bindRange('adInterval', 'adIntervalVal', '');
+
+// ── Toggle labels ──
+['strEncrypt','virtGlobals'].forEach(id => {
+  const cb = document.getElementById(id);
+  const lbl = cb.parentElement.nextElementSibling;
+  cb.addEventListener('change', () => {
+    lbl.textContent = cb.checked ? 'ENABLED' : 'DISABLED';
+  });
+});
+
+// ── Input tracking ──
+const inputEl  = document.getElementById('input');
+const outputEl = document.getElementById('output');
+const inputBadge   = document.getElementById('inputBadge');
+const outputBadge  = document.getElementById('outputBadge');
+const inputCounter = document.getElementById('inputCounter');
+const outputCounter= document.getElementById('outputCounter');
+
+function fmtBytes(n) {
+  if (n < 1024) return n + 'B';
+  if (n < 1024*1024) return (n/1024).toFixed(1) + 'KB';
+  return (n/(1024*1024)).toFixed(2) + 'MB';
+}
+
+function updateInput() {
+  const v = inputEl.value;
+  const lines = v ? v.split('\n').length : 0;
+  inputCounter.textContent = `${v.length} chars · ${lines} lines`;
+  inputBadge.textContent = v.trim() ? 'READY' : 'EMPTY';
+  inputBadge.className = 'panel-badge' + (v.trim() ? ' ok' : '');
+  document.getElementById('statIn').textContent = fmtBytes(new TextEncoder().encode(v).length);
+}
+
+inputEl.addEventListener('input', updateInput);
+updateInput();
+
+// ── Status helper ──
+function setStatus(msg, type='idle') {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.className = 'status-msg ' + type;
+}
+
+// ── Obfuscate (CLI bridge note) ──
+// In production: POST to a local server running lua ZukaTechFull.lua
+// Here we simulate the pipeline with a realistic delay + demo output
+const btnObfuscate = document.getElementById('btnObfuscate');
+const btnCopy      = document.getElementById('btnCopy');
+const btnDownload  = document.getElementById('btnDownload');
+const btnClear     = document.getElementById('btnClear');
+const progressWrap = document.getElementById('progressWrap');
+
+function setWorking(on) {
+  btnObfuscate.disabled = on;
+  btnObfuscate.textContent = on ? '⟳ WORKING...' : '▶ OBFUSCATE';
+  progressWrap.classList.toggle('visible', on);
+}
+
+btnObfuscate.addEventListener('click', async () => {
+  const src = inputEl.value.trim();
+  if (!src) { setStatus('ERROR — NO INPUT PROVIDED', 'error'); return; }
+
+  setWorking(true);
+  setStatus('PARSING AST...', 'working');
+  outputBadge.textContent = 'PROCESSING';
+  outputBadge.className = 'panel-badge';
+  outputEl.value = '';
+  btnCopy.disabled = true;
+  btnDownload.disabled = true;
+
+  const t0 = Date.now();
+
+  // Simulate pipeline stages
+  const stages = [
+    [300,  'ENCRYPTING STRINGS...'],
+    [250,  'INJECTING OPAQUE PREDICATES...'],
+    [200,  'INJECTING DEAD CODE...'],
+    [300,  'VIRTUALISING GLOBALS...'],
+    [350,  'COMPILING VM BYTECODE...'],
+    [200,  'APPLYING DYNAMIC JUMPS...'],
+    [150,  'ANTI-DUMP LAYER...'],
+    [100,  'MINIFYING OUTPUT...'],
+  ];
+
+  for (const [delay, msg] of stages) {
+    setStatus(msg, 'working');
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  // In a real deployment, replace this with:
+  // const res = await fetch('/obfuscate', { method:'POST', body: src });
+  // const result = await res.text();
+  // For now, show a placeholder indicating CLI bridge needed:
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(2);
+  const inBytes = new TextEncoder().encode(src).length;
+
+  const result = `-- ZukaTech Obfuscator v1.0 | Luraph Preset
+-- To enable live obfuscation, run the local bridge server:
+--   lua ZukaTechFull.lua <input.lua> <output.lua>
+-- Or POST to http://localhost:8080/obfuscate
+--
+-- INPUT  : ${inBytes}B  (${src.split('\n').length} lines)
+-- PRESET : Luraph
+-- STEPS  : StringEncryption → OpaquePredicates → DeadCode
+--          → VirtualGlobals → Vmify → DynamicJumps → AntiDump
+--
+${generateDemoObfuscation(src)}`;
+
+  outputEl.value = result;
+  const outBytes = new TextEncoder().encode(result).length;
+  const ratio = (outBytes / inBytes).toFixed(1);
+  const lines = result.split('\n').length;
+
+  outputCounter.textContent = `${result.length} chars · ${lines} lines`;
+  outputBadge.textContent = 'COMPLETE';
+  outputBadge.className = 'panel-badge ok';
+  document.getElementById('statOut').textContent = fmtBytes(outBytes);
+  document.getElementById('statRatio').textContent = ratio + 'x';
+  document.getElementById('statTime').textContent = elapsed + 's';
+
+  setStatus(`OBFUSCATION COMPLETE — ${lines} lines · ${fmtBytes(outBytes)} · ${elapsed}s`, 'success');
+  setWorking(false);
+  btnCopy.disabled = false;
+  btnDownload.disabled = false;
+  outputEl.classList.add('flash');
+  setTimeout(() => outputEl.classList.remove('flash'), 400);
+});
+
+// ── Demo obfuscation (visual only) ──
+function generateDemoObfuscation(src) {
+  const lines = [];
+  const hex = n => '0x' + n.toString(16).toUpperCase().padStart(4,'0');
+  const rand = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
+  const varname = () => {
+    const chars='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let s = chars[rand(0,25)];
+    for(let i=0;i<rand(1,3);i++) s+=chars[rand(0,51)];
+    return s;
+  };
+
+  lines.push(`return(function(...)local ${varname()}={}`);
+  for(let i=0;i<6;i++) lines.push(`${varname()}[${hex(rand(0x1000,0x9000))}]=${['_ENV','getmetatable','setmetatable','unpack','select','table'][i]}`);
+  lines.push(`do local ${varname()}=true`);
+  lines.push(`local ${varname()}={_zt${rand(10000,99999)}=${hex(rand(0x10000,0xFFFFF))}}`);
+  lines.push(`-- [[ VM dispatcher · ${rand(1000,9999)} blocks · xorKey=${hex(rand(0,0xFFFF))} ]]`);
+  lines.push(`return(function(${varname()},${varname()},${varname()},${varname()},${varname()},${varname()},${varname()})`);
+
+  const srcLines = src.split('\n').slice(0,8);
+  for(const l of srcLines) {
+    if(!l.trim()) continue;
+    const v1=varname(), v2=varname(), v3=varname();
+    lines.push(`${v1},${v2},${v3}=${hex(rand(0,0xFFFFFF))},${hex(rand(0,0xFFFFFF))},${hex(rand(0,0xFFFFFF))} --[[ ${l.trim().substring(0,20)} ]]`);
+  }
+
+  lines.push(`end)(...)end)(...)`);
+  return lines.join('\n');
+}
+
+// ── Copy ──
+btnCopy.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(outputEl.value);
+    const orig = btnCopy.textContent;
+    btnCopy.textContent = '✓ COPIED';
+    setStatus('OUTPUT COPIED TO CLIPBOARD', 'success');
+    setTimeout(() => { btnCopy.textContent = orig; setStatus('READY', 'idle'); }, 2000);
+  } catch {
+    setStatus('COPY FAILED — SELECT MANUALLY', 'error');
+  }
+});
+
+// ── Download ──
+btnDownload.addEventListener('click', () => {
+  const blob = new Blob([outputEl.value], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'obfuscated_' + Date.now() + '.lua';
+  a.click();
+  setStatus('FILE DOWNLOADED', 'success');
+  setTimeout(() => setStatus('READY', 'idle'), 2000);
+});
+
+// ── Clear ──
+btnClear.addEventListener('click', () => {
+  inputEl.value = '';
+  outputEl.value = '';
+  updateInput();
+  outputCounter.textContent = '0 chars · 0 lines';
+  outputBadge.textContent = 'AWAITING';
+  outputBadge.className = 'panel-badge';
+  btnCopy.disabled = true;
+  btnDownload.disabled = true;
+  document.getElementById('statOut').textContent = '0B';
+  document.getElementById('statRatio').textContent = '—';
+  document.getElementById('statTime').textContent = '—';
+  setStatus('CLEARED — READY FOR NEW INPUT', 'idle');
+});
+</script>
+</body>
+</html>
