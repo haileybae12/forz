@@ -1,1 +1,0 @@
-.\lua.exe main.lua input.lua out.lua
